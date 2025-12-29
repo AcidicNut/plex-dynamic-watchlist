@@ -12,6 +12,9 @@ from dotenv import load_dotenv
 import os
 
 # --- 1. CONFIGURATION ---
+EXCLUDED_LANGS = {"ko", "zh"}
+EXCLUDED_COUNTRIES = {"KR", "CN", "TW", "HK"}
+
 load_dotenv()  # load .env
 
 API_KEY = os.getenv("TMDB_API_KEY")
@@ -44,6 +47,19 @@ except PermissionError:
     logger.warning(f"Permission denied to write to '{LOG_FILE_PATH}'. File logging is disabled.")
 except Exception as e:
     logger.warning(f"An unexpected error occurred while setting up file logging: {e}. File logging is disabled.")
+
+def is_excluded_tmdb_item(item: dict) -> bool:
+    # Language-based exclusion (movies + TV)
+    lang = item.get("original_language")
+    if lang in EXCLUDED_LANGS:
+        return True
+
+    # Country-based exclusion (mostly TV shows)
+    countries = set(item.get("origin_country", []))
+    if countries & EXCLUDED_COUNTRIES:
+        return True
+
+    return False
 
 def norm_title(s: str) -> str:
     if not s: return ""
@@ -205,6 +221,14 @@ def process_media_items(trending_items, plex, account, media_type):
     date_key = 'first_air_date' if media_type == 'show' else 'release_date'
 
     for entry in trending_items:
+        if is_excluded_tmdb_item(entry):
+            logger.info(
+                f"Skipping excluded language/country item: "
+                f"{entry.get('title') or entry.get('name')} "
+                f"(lang={entry.get('original_language')}, "
+                f"country={entry.get('origin_country')})"
+            )
+            continue
         tmdb_id = entry.get('id')
         year = year_from(entry.get(date_key, ''))
         titles = titles_from_tmdb_item(entry)
